@@ -7,6 +7,11 @@
 > one-click `.pkg` installer. Windows builds are prepared but not yet
 > produced — see [docs/PACKAGING.md](docs/PACKAGING.md) for how to build
 > both platforms and where installables end up. Published by **KDDN**.
+>
+> ⚠️ This is an unsigned/unnotarized MVP build — macOS will show an
+> "unidentified developer" warning on first open. See
+> [`releases/v1.0.0/README.md`](releases/v1.0.0/README.md) for the
+> one-time bypass steps.
 
 DARK MATTER is an experimental spatial reverb plugin built from scratch, combining real-time audio processing with a highly visual, interaction-driven interface.
 
