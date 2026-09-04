@@ -25,8 +25,15 @@ void DarkMatterProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::M
     for (int ch = getTotalNumInputChannels(); ch < getTotalNumOutputChannels(); ++ch)
         buffer.clear(ch, 0, buffer.getNumSamples());
 
+    const bool bypassed = apvts.getRawParameterValue(dm::ParamID::bypass)->load() > 0.5f;
+
+    float inPeak = 0.0f;
+    for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+        inPeak = juce::jmax(inPeak, buffer.getMagnitude(ch, 0, buffer.getNumSamples()));
+    inputLevel.store(inPeak);
+
     dm::ReverbEngine::Params p;
-    p.mixPercent = apvts.getRawParameterValue(dm::ParamID::mix)->load();
+    p.mixPercent = bypassed ? 0.0f : apvts.getRawParameterValue(dm::ParamID::mix)->load();
     p.sizePercent = apvts.getRawParameterValue(dm::ParamID::size)->load();
     p.decaySeconds = apvts.getRawParameterValue(dm::ParamID::decay)->load();
     p.predelayMs = apvts.getRawParameterValue(dm::ParamID::predelay)->load();
@@ -39,6 +46,11 @@ void DarkMatterProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::M
 
     juce::dsp::AudioBlock<float> block(buffer);
     reverb.process(block);
+
+    float outPeak = 0.0f;
+    for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+        outPeak = juce::jmax(outPeak, buffer.getMagnitude(ch, 0, buffer.getNumSamples()));
+    outputLevel.store(outPeak);
 }
 
 bool DarkMatterProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const

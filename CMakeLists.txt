@@ -8,6 +8,17 @@ set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS deployment ta
 
 add_subdirectory(extern/juce)
 
+juce_add_binary_data(DarkMatterAssets
+    SOURCES
+        resources/fonts/Geist-200.ttf
+        resources/fonts/Geist-300.ttf
+        resources/fonts/Geist-400.ttf
+        resources/fonts/Geist-500.ttf
+        resources/fonts/GeistMono-300.ttf
+        resources/fonts/GeistMono-400.ttf
+        resources/fonts/Syncopate-400.ttf
+)
+
 juce_add_plugin(DarkMatter
     COMPANY_NAME "Keiddn"
     PRODUCT_NAME "Dark Matter"
@@ -26,6 +37,13 @@ target_sources(DarkMatter PRIVATE
     source/PluginProcessor.cpp
     source/PluginEditor.cpp
     source/dsp/ReverbEngine.cpp
+    source/presets/PresetManager.cpp
+    source/ui/DarkMatterLookAndFeel.cpp
+    source/ui/Knob.cpp
+    source/ui/LurkingModule.cpp
+    source/ui/BlackHoleOrb.cpp
+    source/ui/LevelMeter.cpp
+    source/ui/PresetBar.cpp
 )
 
 target_compile_definitions(DarkMatter PUBLIC
@@ -35,6 +53,7 @@ target_compile_definitions(DarkMatter PUBLIC
 )
 
 target_link_libraries(DarkMatter PRIVATE
+    DarkMatterAssets
     juce::juce_audio_utils
     juce::juce_dsp
     juce::juce_opengl

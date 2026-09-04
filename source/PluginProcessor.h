@@ -2,8 +2,10 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_dsp/juce_dsp.h>
+#include <atomic>
 #include "dsp/Parameters.h"
 #include "dsp/ReverbEngine.h"
+#include "presets/PresetManager.h"
 
 class DarkMatterProcessor : public juce::AudioProcessor
 {
@@ -35,6 +37,10 @@ public:
     bool isBusesLayoutSupported(const BusesLayout& layouts) const override;
 
     juce::AudioProcessorValueTreeState apvts;
+    dm::PresetManager presetManager { apvts };
+
+    std::atomic<float> inputLevel { 0.0f };
+    std::atomic<float> outputLevel { 0.0f };
 
 private:
     dm::ReverbEngine reverb;
