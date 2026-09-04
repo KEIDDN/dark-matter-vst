@@ -2,6 +2,12 @@
 
 ### Experimental Reverb Audio Plugin
 
+> **v1.0.0 is ready.** macOS builds (Standalone, VST3, AU) are packaged and
+> available under [`releases/v1.0.0/`](releases/v1.0.0/), including a
+> one-click `.pkg` installer. Windows builds are prepared but not yet
+> produced — see [docs/PACKAGING.md](docs/PACKAGING.md) for how to build
+> both platforms and where installables end up. Published by **KDDN**.
+
 DARK MATTER is an experimental spatial reverb plugin built from scratch, combining real-time audio processing with a highly visual, interaction-driven interface.
 
 Inspired by the behaviour of gravitational fields and black holes, DARK MATTER explores the relationship between **sound, space and visual feedback** through a minimal audio interface centred around a reactive black-hole visualisation.
