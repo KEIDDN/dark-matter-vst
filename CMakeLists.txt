@@ -24,7 +24,7 @@ juce_add_plugin(DarkMatter
     PRODUCT_NAME "Dark Matter"
     PLUGIN_MANUFACTURER_CODE Keid
     PLUGIN_CODE Dkm1
-    FORMATS Standalone
+    FORMATS Standalone VST3 AU
     IS_SYNTH FALSE
     NEEDS_MIDI_INPUT FALSE
     NEEDS_MIDI_OUTPUT FALSE
