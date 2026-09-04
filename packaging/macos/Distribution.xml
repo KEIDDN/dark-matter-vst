@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+    <title>Dark Matter</title>
+    <organization>com.kddn</organization>
+    <domains enable_localSystem="true"/>
+    <options customize="allow" require-scripts="false" rootVolumeOnly="true"/>
+    <welcome file="welcome.html" mime-type="text/html"/>
+
+    <choices-outline>
+        <line choice="standalone"/>
+        <line choice="vst3"/>
+        <line choice="au"/>
+    </choices-outline>
+
+    <choice id="standalone" title="Standalone App" description="Installs the standalone Dark Matter app into /Applications.">
+        <pkg-ref id="com.kddn.darkmatter.standalone"/>
+    </choice>
+    <choice id="vst3" title="VST3 Plug-in" description="Installs the VST3 plug-in into /Library/Audio/Plug-Ins/VST3.">
+        <pkg-ref id="com.kddn.darkmatter.vst3"/>
+    </choice>
+    <choice id="au" title="Audio Unit Plug-in" description="Installs the Audio Unit plug-in into /Library/Audio/Plug-Ins/Components.">
+        <pkg-ref id="com.kddn.darkmatter.au"/>
+    </choice>
+
+    <pkg-ref id="com.kddn.darkmatter.standalone" version="0" onConclusion="none">standalone.pkg</pkg-ref>
+    <pkg-ref id="com.kddn.darkmatter.vst3" version="0" onConclusion="none">vst3.pkg</pkg-ref>
+    <pkg-ref id="com.kddn.darkmatter.au" version="0" onConclusion="none">au.pkg</pkg-ref>
+</installer-gui-script>

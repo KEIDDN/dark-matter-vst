@@ -102,3 +102,14 @@ Dry / Wet Mix
      │
      ▼
 Audio Output
+```
+
+---
+
+## Building & Packaging
+
+For day-to-day development, configure and build the CMake project in
+`build/` as usual (see `CMakeLists.txt` - targets `DarkMatter_Standalone`,
+`DarkMatter_VST3`, `DarkMatter_AU`).
+
+For distributable macOS/Windows installers, see [docs/PACKAGING.md](docs/PACKAGING.md).

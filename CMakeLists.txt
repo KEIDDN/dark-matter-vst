@@ -1,10 +1,13 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(DarkMatter VERSION 0.2.0)
+project(DarkMatter VERSION 1.0.0)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS deployment target")
+
+if(APPLE)
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS deployment target")
+endif()
 
 add_subdirectory(extern/juce)
 
@@ -19,12 +22,23 @@ juce_add_binary_data(DarkMatterAssets
         resources/fonts/Syncopate-400.ttf
 )
 
+# AU only exists on Apple platforms - asking for it on Windows/Linux breaks
+# the build, so it's added conditionally rather than listed unconditionally.
+set(DarkMatterFormats Standalone VST3)
+if(APPLE)
+    list(APPEND DarkMatterFormats AU)
+endif()
+
 juce_add_plugin(DarkMatter
     COMPANY_NAME "Keiddn"
+    # Pinned explicitly so it can never silently drift between JUCE versions -
+    # this is the same value JUCE's own default already produces, unchanged,
+    # to keep VST3/AU identity (and preset/project compatibility) intact.
+    BUNDLE_ID "com.Keiddn.DarkMatter"
     PRODUCT_NAME "Dark Matter"
     PLUGIN_MANUFACTURER_CODE Keid
     PLUGIN_CODE Dkm1
-    FORMATS Standalone VST3 AU
+    FORMATS ${DarkMatterFormats}
     IS_SYNTH FALSE
     NEEDS_MIDI_INPUT FALSE
     NEEDS_MIDI_OUTPUT FALSE
