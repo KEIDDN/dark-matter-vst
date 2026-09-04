@@ -49,10 +49,12 @@ private:
         float state = 0.0f;
         float coeff = 0.0f;
 
-        void setCutoff(float hz, double rate)
+        static float coeffForCutoff(float hz, double rate)
         {
-            coeff = std::exp(-2.0f * juce::MathConstants<float>::pi * hz / (float) rate);
+            return std::exp(-2.0f * juce::MathConstants<float>::pi * hz / (float) rate);
         }
+
+        void setCutoff(float hz, double rate) { coeff = coeffForCutoff(hz, rate); }
 
         float process(float x)
         {
@@ -91,16 +93,31 @@ private:
     double sampleRate = 44100.0;
 
     juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::Lagrange3rd> predelayLine;
-    std::array<AllpassDiffuser, numDiffusers> diffusers;
+    // Two independent diffuser chains feed the even/odd (L/R-tapped) lines
+    // separately, so the two sides of the network decorrelate from the very
+    // first reflection instead of only differing by delay time downstream.
+    std::array<AllpassDiffuser, numDiffusers> diffusersA, diffusersB;
     std::array<juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::Lagrange3rd>, numLines> lines;
     std::array<float, numLines> baseDelayMs;
     std::array<OnePoleLowpass, numLines> dampingFilters;
-    std::array<float, numLines> lfoPhase {};
+    std::array<float, numLines> lfoPhase {}, lfoPhase2 {};
     std::array<float, numLines> lfoRateHz;
 
     juce::dsp::IIR::Filter<float> lowCutL, lowCutR, highCutL, highCutR;
 
+    // Per-block targets are cheap to (re)compute (a handful of pow()/exp()
+    // calls), but jumping straight to them every block causes audible clicks
+    // since several feed the delay network directly. Each is ramped linearly
+    // sample-by-sample toward its target instead — cheap (no transcendental
+    // calls in the hot path) and removes the zipper/click artifacts.
+    static constexpr float kSmoothingTimeSeconds = 0.015f;
+    juce::SmoothedValue<float> smoothedSizeScale, smoothedPredelaySamples,
+                                smoothedModDepthSamples, smoothedDampingCoeff;
+    std::array<juce::SmoothedValue<float>, numLines> smoothedFeedbackGain;
+
     void updateToneFilters();
+    float computeSizeScale() const;
+    float computeFeedbackGain(int lineIndex, float sizeScale) const;
 };
 
 } // namespace dm

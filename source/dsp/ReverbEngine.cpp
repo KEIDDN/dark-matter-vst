@@ -8,17 +8,34 @@ namespace
 {
     // Distinct, non-integer-ratio spread (ms) so the 8 lines don't beat/resonate together.
     constexpr std::array<float, 8> kBaseDelayMs { 29.7f, 37.1f, 41.3f, 47.9f, 53.3f, 59.7f, 61.1f, 67.3f };
+    // Primary (audible-rate) and secondary (slow-wander) LFO rates per line. Summing
+    // two mutually-irregular sines per line (instead of one) turns the modulation
+    // from a pure, obviously-periodic wobble into a quasi-periodic, evolving one.
     constexpr std::array<float, 8> kLfoRateHz    { 0.083f, 0.121f, 0.157f, 0.191f, 0.229f, 0.263f, 0.311f, 0.347f };
-    constexpr std::array<float, 4> kDiffuserMs   { 5.10f, 7.73f, 10.00f, 12.61f };
+    constexpr std::array<float, 8> kLfoRateHz2   { 0.019f, 0.026f, 0.031f, 0.037f, 0.041f, 0.048f, 0.053f, 0.059f };
+    constexpr std::array<float, 4> kDiffuserMsA  { 5.10f, 7.73f, 10.00f, 12.61f };
+    constexpr std::array<float, 4> kDiffuserMsB  { 6.30f, 8.87f, 11.20f, 13.97f };
 
     constexpr float kMaxModDepthMs = 3.0f;
-    constexpr float kMaxFeedbackGain = 0.985f;
+    // The FDN's feedback matrix (see the Householder mix below) is unitary, i.e.
+    // energy-preserving on its own - any individual line's feedback gain <1 is
+    // therefore already guaranteed stable, with no risk of runaway feedback. This
+    // ceiling is just a numerical safety margin (see computeFeedbackGain()), not a
+    // decay-time limiter: it used to be 0.985, which silently capped the real RT60
+    // of the short lines/low SIZE well below whatever DECAY asked for.
+    constexpr float kMaxFeedbackGain = 0.9995f;
 }
 
 ReverbEngine::ReverbEngine()
 {
     lfoRateHz = kLfoRateHz;
     baseDelayMs = kBaseDelayMs;
+
+    // Spread each line's starting LFO phase using the golden angle so all 8
+    // start decorrelated instead of all wobbling in lockstep from t=0 (which
+    // otherwise reads as an obvious, synchronised chorus right after load).
+    for (int i = 0; i < numLines; ++i)
+        lfoPhase[(size_t) i] = std::fmod((float) i * 2.399963f, juce::MathConstants<float>::twoPi);
 }
 
 void ReverbEngine::prepare(const juce::dsp::ProcessSpec& spec)
@@ -38,10 +55,10 @@ void ReverbEngine::prepare(const juce::dsp::ProcessSpec& spec)
         line.setMaximumDelayInSamples(maxLineDelay);
     }
 
-    for (size_t i = 0; i < diffusers.size(); ++i)
+    for (size_t i = 0; i < diffusersA.size(); ++i)
     {
-        const int delaySamples = juce::jmax(1, (int) (kDiffuserMs[i] * 0.001 * sampleRate));
-        diffusers[i].prepare(delaySamples);
+        diffusersA[i].prepare(juce::jmax(1, (int) (kDiffuserMsA[i] * 0.001 * sampleRate)));
+        diffusersB[i].prepare(juce::jmax(1, (int) (kDiffuserMsB[i] * 0.001 * sampleRate)));
     }
 
     for (auto& f : dampingFilters)
@@ -55,6 +72,27 @@ void ReverbEngine::prepare(const juce::dsp::ProcessSpec& spec)
     highCutL.prepare(monoSpec);
     highCutR.prepare(monoSpec);
 
+    const float sizeScale = computeSizeScale();
+    smoothedSizeScale.reset(sampleRate, kSmoothingTimeSeconds);
+    smoothedSizeScale.setCurrentAndTargetValue(sizeScale);
+
+    smoothedPredelaySamples.reset(sampleRate, kSmoothingTimeSeconds);
+    smoothedPredelaySamples.setCurrentAndTargetValue(
+        juce::jlimit(0.0f, (float) (0.25 * sampleRate) - 4.0f, params.predelayMs * 0.001f * (float) sampleRate));
+
+    smoothedModDepthSamples.reset(sampleRate, kSmoothingTimeSeconds);
+    smoothedModDepthSamples.setCurrentAndTargetValue(
+        (params.modulationPercent / 100.0f) * kMaxModDepthMs * 0.001f * (float) sampleRate);
+
+    smoothedDampingCoeff.reset(sampleRate, kSmoothingTimeSeconds);
+    smoothedDampingCoeff.setCurrentAndTargetValue(OnePoleLowpass::coeffForCutoff(params.dampingHz, sampleRate));
+
+    for (int i = 0; i < numLines; ++i)
+    {
+        smoothedFeedbackGain[(size_t) i].reset(sampleRate, kSmoothingTimeSeconds);
+        smoothedFeedbackGain[(size_t) i].setCurrentAndTargetValue(computeFeedbackGain(i, sizeScale));
+    }
+
     updateToneFilters();
     reset();
 }
@@ -64,16 +102,39 @@ void ReverbEngine::reset()
     predelayLine.reset();
     for (auto& line : lines)
         line.reset();
-    for (auto& d : diffusers)
+    for (auto& d : diffusersA)
+        d.reset();
+    for (auto& d : diffusersB)
         d.reset();
     for (auto& f : dampingFilters)
         f.state = 0.0f;
-    lfoPhase.fill(0.0f);
+
+    // Same golden-angle spread as the constructor (see there for why) - reapplied
+    // here too since reset() can run again later (e.g. on host transport stop).
+    for (int i = 0; i < numLines; ++i)
+    {
+        const float offset = std::fmod((float) i * 2.399963f, juce::MathConstants<float>::twoPi);
+        lfoPhase[(size_t) i] = offset;
+        lfoPhase2[(size_t) i] = offset * 0.5f;
+    }
 
     lowCutL.reset();
     lowCutR.reset();
     highCutL.reset();
     highCutR.reset();
+}
+
+float ReverbEngine::computeSizeScale() const
+{
+    return 0.35f + 1.75f * (params.sizePercent / 100.0f);
+}
+
+float ReverbEngine::computeFeedbackGain(int lineIndex, float sizeScale) const
+{
+    const float delaySamples = baseDelayMs[(size_t) lineIndex] * sizeScale * 0.001f * (float) sampleRate;
+    const float loopSeconds = delaySamples / (float) sampleRate;
+    const float gain = std::pow(10.0f, -3.0f * loopSeconds / juce::jmax(0.05f, params.decaySeconds));
+    return juce::jmin(kMaxFeedbackGain, gain);
 }
 
 void ReverbEngine::updateToneFilters()
@@ -93,41 +154,47 @@ void ReverbEngine::process(juce::dsp::AudioBlock<float>& block)
 
     updateToneFilters();
 
-    for (auto& f : dampingFilters)
-        f.setCutoff(params.dampingHz, sampleRate);
-
+    // Cheap per-block target computation (unchanged formulas) - the actual
+    // values used in the sample loop below ramp linearly toward these.
     const float diffuserGain = 0.15f + 0.55f * (params.diffusionPercent / 100.0f);
-    for (auto& d : diffusers)
+    for (auto& d : diffusersA)
+        d.gain = diffuserGain;
+    for (auto& d : diffusersB)
         d.gain = diffuserGain;
 
-    const float sizeScale = 0.35f + 1.75f * (params.sizePercent / 100.0f);
-    std::array<float, numLines> baseDelaySamples {};
-    std::array<float, numLines> feedbackGain {};
+    const float sizeScale = computeSizeScale();
+    smoothedSizeScale.setTargetValue(sizeScale);
     for (int i = 0; i < numLines; ++i)
-    {
-        baseDelaySamples[(size_t) i] = baseDelayMs[(size_t) i] * sizeScale * 0.001f * (float) sampleRate;
-        const float loopSeconds = baseDelaySamples[(size_t) i] / (float) sampleRate;
-        const float gain = std::pow(10.0f, -3.0f * loopSeconds / juce::jmax(0.05f, params.decaySeconds));
-        feedbackGain[(size_t) i] = juce::jmin(kMaxFeedbackGain, gain);
-    }
+        smoothedFeedbackGain[(size_t) i].setTargetValue(computeFeedbackGain(i, sizeScale));
 
-    const float modDepthSamples = (params.modulationPercent / 100.0f) * kMaxModDepthMs * 0.001f * (float) sampleRate;
-    const float predelaySamples = juce::jlimit(0.0f, (float) (0.25 * sampleRate) - 4.0f, params.predelayMs * 0.001f * (float) sampleRate);
+    smoothedModDepthSamples.setTargetValue((params.modulationPercent / 100.0f) * kMaxModDepthMs * 0.001f * (float) sampleRate);
+    smoothedPredelaySamples.setTargetValue(
+        juce::jlimit(0.0f, (float) (0.25 * sampleRate) - 4.0f, params.predelayMs * 0.001f * (float) sampleRate));
+    smoothedDampingCoeff.setTargetValue(OnePoleLowpass::coeffForCutoff(params.dampingHz, sampleRate));
+
     const float mix = juce::jlimit(0.0f, 1.0f, params.mixPercent / 100.0f);
     const float diffuseInject = 1.0f / std::sqrt((float) numLines);
     const float wetTapNorm = 2.0f / (float) numLines;
 
     for (int n = 0; n < numSamples; ++n)
     {
+        const float curSizeScale = smoothedSizeScale.getNextValue();
+        const float curPredelaySamples = smoothedPredelaySamples.getNextValue();
+        const float curModDepthSamples = smoothedModDepthSamples.getNextValue();
+        const float curDampingCoeff = smoothedDampingCoeff.getNextValue();
+
         const float dryL = block.getSample(0, n);
         const float dryR = numChannels > 1 ? block.getSample(1, n) : dryL;
         const float monoIn = 0.5f * (dryL + dryR);
 
         predelayLine.pushSample(0, monoIn);
-        float diffused = predelayLine.popSample(0, predelaySamples);
+        const float predelayed = predelayLine.popSample(0, curPredelaySamples);
 
-        for (auto& d : diffusers)
-            diffused = d.process(diffused);
+        float diffusedA = predelayed, diffusedB = predelayed;
+        for (auto& d : diffusersA)
+            diffusedA = d.process(diffusedA);
+        for (auto& d : diffusersB)
+            diffusedB = d.process(diffusedB);
 
         std::array<float, numLines> lineOut {};
         for (int i = 0; i < numLines; ++i)
@@ -137,8 +204,16 @@ void ReverbEngine::process(juce::dsp::AudioBlock<float>& block)
             if (phase > juce::MathConstants<float>::twoPi)
                 phase -= juce::MathConstants<float>::twoPi;
 
-            const float modOffset = std::sin(phase) * modDepthSamples;
-            const float delaySamples = juce::jmax(1.0f, baseDelaySamples[(size_t) i] + modOffset);
+            auto& phase2 = lfoPhase2[(size_t) i];
+            phase2 += (kLfoRateHz2[(size_t) i] / (float) sampleRate) * juce::MathConstants<float>::twoPi;
+            if (phase2 > juce::MathConstants<float>::twoPi)
+                phase2 -= juce::MathConstants<float>::twoPi;
+
+            // Two mutually-irregular sines per line instead of one pure tone -
+            // reads as an organic, evolving wobble rather than a fixed-rate
+            // chorus/vibrato, while keeping the same total max excursion.
+            const float modOffset = (0.7f * std::sin(phase) + 0.3f * std::sin(phase2)) * curModDepthSamples;
+            const float delaySamples = juce::jmax(1.0f, baseDelayMs[(size_t) i] * curSizeScale * 0.001f * (float) sampleRate + modOffset);
 
             lineOut[(size_t) i] = lines[(size_t) i].popSample(0, delaySamples, true);
         }
@@ -151,8 +226,10 @@ void ReverbEngine::process(juce::dsp::AudioBlock<float>& block)
         for (int i = 0; i < numLines; ++i)
         {
             const float feedback = lineOut[(size_t) i] - houseFactor * sum;
+            dampingFilters[(size_t) i].coeff = curDampingCoeff;
             const float damped = dampingFilters[(size_t) i].process(feedback);
-            const float fed = damped * feedbackGain[(size_t) i];
+            const float fed = damped * smoothedFeedbackGain[(size_t) i].getNextValue();
+            const float diffused = (i % 2) == 0 ? diffusedA : diffusedB;
             const float inputToLine = fed + diffused * diffuseInject;
             lines[(size_t) i].pushSample(0, inputToLine);
         }

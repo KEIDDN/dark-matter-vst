@@ -23,7 +23,11 @@ public:
     const juce::String getName() const override { return "Dark Matter"; }
     bool acceptsMidi() const override { return false; }
     bool producesMidi() const override { return false; }
-    double getTailLengthSeconds() const override { return 4.0; }
+    // Was hardcoded to 4.0, unrelated to the actual DECAY parameter (up to
+    // dm::kMaxDecaySeconds = 20s) - hosts could cut the tail short on
+    // bounce/export or after transport stop. +0.3s covers predelay/diffusion
+    // latency ahead of the tail itself.
+    double getTailLengthSeconds() const override { return (double) dm::kMaxDecaySeconds + 0.3; }
 
     int getNumPrograms() override { return 1; }
     int getCurrentProgram() override { return 0; }
@@ -35,6 +39,14 @@ public:
     void setStateInformation(const void*, int) override;
 
     bool isBusesLayoutSupported(const BusesLayout& layouts) const override;
+
+    // Lets a host's own bypass control (distinct from automating our "bypass"
+    // parameter directly, e.g. a mixer-strip bypass button) route through the
+    // same parameter processBlock() already checks.
+    juce::AudioProcessorParameter* getBypassParameter() const override
+    {
+        return apvts.getParameter(dm::ParamID::bypass);
+    }
 
     juce::AudioProcessorValueTreeState apvts;
     dm::PresetManager presetManager { apvts };

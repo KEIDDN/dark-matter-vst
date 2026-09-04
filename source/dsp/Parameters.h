@@ -6,6 +6,11 @@
 
 namespace dm
 {
+    // Single source of truth for the DECAY parameter's max range, so
+    // AudioProcessor::getTailLengthSeconds() can't silently drift out of
+    // sync with it (see decayRange below).
+    inline constexpr float kMaxDecaySeconds = 20.0f;
+
 namespace ParamID
 {
     static constexpr const char* mix = "mix";
@@ -37,7 +42,7 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout
     // and factory preset data (stored as prototype knob positions) converts
     // losslessly into real parameter units below.
     NormalisableRange<float> decayRange(
-        0.2f, 20.0f,
+        0.2f, kMaxDecaySeconds,
         [](float, float, float v) { return 0.2f + v * v * 19.8f; },
         [](float, float, float value) { return std::sqrt(juce::jmax(0.0f, (value - 0.2f) / 19.8f)); });
 
