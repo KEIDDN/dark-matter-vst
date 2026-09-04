@@ -19,6 +19,12 @@ namespace
         #endif
         uniform vec2 uRes;
         uniform float uTime,uSize,uMix,uDecay,uMod,uPulse,uDamp,uDiff,uPower;
+        // Backdrop-match uniforms: JUCE's OpenGLContext can't render this component
+        // with real window transparency on macOS (the NSOpenGLView surface is opaque),
+        // so instead of a transparent edge we paint the exact editor background
+        // gradient behind the orb, in the same physical-pixel space as gl_FragCoord.
+        uniform vec2 uOrigin, uBgCenter;
+        uniform float uOrbH, uBgRadius;
 
         vec3 mod289(vec3 x){return x-floor(x*(1.0/289.0))*289.0;}
         vec2 mod289(vec2 x){return x-floor(x*(1.0/289.0))*289.0;}
@@ -71,11 +77,23 @@ namespace
           col=col*core+vec3(0.004,0.003,0.008)*(1.0-core);
           float m=1.0-smoothstep(0.44,0.5,r);
           col*=mix(0.22,1.0,uPower);
-          gl_FragColor=vec4(col*m,m);
+
+          vec2 canvasFrag=uOrigin+vec2(gl_FragCoord.x, uOrbH-gl_FragCoord.y);
+          float bgT=clamp(length(canvasFrag-uBgCenter)/uBgRadius,0.0,1.0);
+          vec3 bgCenterCol=vec3(17.0,16.0,19.0)/255.0, bgMidCol=vec3(10.0,9.0,12.0)/255.0, bgOuterCol=vec3(5.0,5.0,6.0)/255.0;
+          vec3 bg=bgT<0.5 ? mix(bgCenterCol,bgMidCol,bgT/0.5) : mix(bgMidCol,bgOuterCol,(bgT-0.5)/0.5);
+
+          gl_FragColor=vec4(mix(bg,col,m),1.0);
         }
     )";
 
     static const float quadVerts[8] = { -1.0f, -1.0f, 1.0f, -1.0f, -1.0f, 1.0f, 1.0f, 1.0f };
+
+    // Must match PluginEditor's fixed 1200x800 layout: kWindowWidth/kWindowHeight,
+    // the radial background gradient in DarkMatterEditor::paint(), and orb.setBounds().
+    constexpr float kEditorW = 1200.0f, kEditorH = 800.0f;
+    constexpr float kOrbX = 392.0f, kOrbY = 136.0f, kOrbH = 416.0f;
+    constexpr float kBgCenterX = kEditorW * 0.5f, kBgCenterY = kEditorH * 0.45f, kBgRadius = kEditorH * 0.45f;
 }
 
 BlackHoleOrb::BlackHoleOrb(juce::AudioProcessorValueTreeState& apvts) : state(apvts)
@@ -188,6 +206,10 @@ void BlackHoleOrb::renderOpenGL()
     shader->setUniform("uDamp", uSmooth[4]);
     shader->setUniform("uDiff", uSmooth[5]);
     shader->setUniform("uPower", uSmooth[6]);
+    shader->setUniform("uOrigin", kOrbX * scale, kOrbY * scale);
+    shader->setUniform("uOrbH", kOrbH * scale);
+    shader->setUniform("uBgCenter", kBgCenterX * scale, kBgCenterY * scale);
+    shader->setUniform("uBgRadius", kBgRadius * scale);
 
     glContext.extensions.glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
     glContext.extensions.glEnableVertexAttribArray((GLuint) positionAttribute->attributeID);

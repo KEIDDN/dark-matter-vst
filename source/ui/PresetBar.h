@@ -18,6 +18,7 @@ public:
     void paint(juce::Graphics&) override;
     void resized() override;
     void mouseUp(const juce::MouseEvent&) override;
+    bool hitTest(int x, int y) override;
 
 private:
     PresetManager& presets;
@@ -26,6 +27,12 @@ private:
 
     bool menuOpen = false;
     bool saving = false;
+    // PresetBar is both a normal Component (mouseUp fires via the click it
+    // received directly) and a Desktop global mouse listener (mouseUp fires
+    // again for that same click so outside-clicks can be detected) — this
+    // guards against handling the same physical click twice, which used to
+    // toggle the menu open then immediately shut on every click on the pill.
+    juce::int64 lastHandledMouseUpMs = -1;
     PresetKind activeTab = PresetKind::Factory;
 
     juce::Label nameLabel;

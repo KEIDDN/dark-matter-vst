@@ -125,14 +125,38 @@ void PresetBar::setMenuOpen(bool open)
         return;
     menuOpen = open;
     if (open)
+    {
         activeTab = presets.getCurrentKind();
+        // The dropdown panel overlaps the PRE-DELAY/DECAY/SIZE knobs (they're added
+        // to the editor after presetBar, so they'd otherwise paint - and take mouse
+        // clicks - on top of it while it's open).
+        toFront(false);
+    }
     else
         saving = false;
     refreshFromState();
 }
 
+bool PresetBar::hitTest(int x, int y)
+{
+    // Opening the dropdown brings presetBar to front (see setMenuOpen) so it
+    // draws and receives clicks over the PRE-DELAY/DECAY knobs it overlaps.
+    // toFront() doesn't undo itself on close, so without this override
+    // presetBar's full (empty, undrawn) rectangle would keep swallowing
+    // clicks meant for those knobs even after the dropdown is closed again —
+    // shrink the clickable area back down to just the pill whenever closed.
+    if (menuOpen)
+        return true;
+    return pillBounds.contains(x, y);
+}
+
 void PresetBar::mouseUp(const juce::MouseEvent& e)
 {
+    const auto eventMs = e.eventTime.toMilliseconds();
+    if (eventMs == lastHandledMouseUpMs)
+        return;
+    lastHandledMouseUpMs = eventMs;
+
     if (auto* comp = e.originalComponent)
     {
         if (comp == this || comp == &nameLabel)
