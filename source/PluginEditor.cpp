@@ -1,7 +1,7 @@
 #include "PluginEditor.h"
 
 DarkMatterEditor::DarkMatterEditor(DarkMatterProcessor& p)
-    : juce::AudioProcessorEditor(&p), processor(p)
+    : juce::AudioProcessorEditor(&p), audioProcessor(p)
 {
     setSize(1200, 800);
 }

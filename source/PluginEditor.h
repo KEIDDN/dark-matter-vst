@@ -12,7 +12,7 @@ public:
     void resized() override {}
 
 private:
-    DarkMatterProcessor& processor;
+    DarkMatterProcessor& audioProcessor;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(DarkMatterEditor)
 };

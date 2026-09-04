@@ -25,6 +25,7 @@ juce_add_plugin(DarkMatter
 target_sources(DarkMatter PRIVATE
     source/PluginProcessor.cpp
     source/PluginEditor.cpp
+    source/dsp/ReverbEngine.cpp
 )
 
 target_compile_definitions(DarkMatter PUBLIC
@@ -40,4 +41,14 @@ target_link_libraries(DarkMatter PRIVATE
     juce::juce_recommended_config_flags
     juce::juce_recommended_lto_flags
     juce::juce_recommended_warning_flags
+)
+
+# Offline DSP correctness check — not part of the plugin, not built by default.
+add_executable(ReverbSanityTest EXCLUDE_FROM_ALL
+    tools/reverb_sanity_test/main.cpp
+    source/dsp/ReverbEngine.cpp
+)
+target_link_libraries(ReverbSanityTest PRIVATE
+    juce::juce_dsp
+    juce::juce_recommended_config_flags
 )
